@@ -6,260 +6,504 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="theme-color" content="#111111">
+
   <title>Brodie's Next Song</title>
+
   <style>
-    :root { font-family: Arial, Helvetica, sans-serif; }
-    * { box-sizing: border-box; }
-    html, body { margin: 0; width: 100%; height: 100%; overflow: hidden; background: #111; }
-    body { min-height: 100svh; }
-    #app { width: 100%; height: 100%; }
-    .screen {
-      width: 100%; height: 100%;
-      display: flex; align-items: center; justify-content: center;
-      padding: max(24px, env(safe-area-inset-top))
-               max(24px, env(safe-area-inset-right))
-               max(24px, env(safe-area-inset-bottom))
-               max(24px, env(safe-area-inset-left));
+    :root {
+      font-family: Arial, Helvetica, sans-serif;
     }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html,
+    body {
+      margin: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: #111;
+    }
+
+    body {
+      min-height: 100svh;
+    }
+
+    #app {
+      width: 100%;
+      height: 100%;
+    }
+
+    .screen {
+      width: 100%;
+      height: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+
+      padding:
+        max(24px, env(safe-area-inset-top))
+        max(24px, env(safe-area-inset-right))
+        max(24px, env(safe-area-inset-bottom))
+        max(24px, env(safe-area-inset-left));
+    }
+
     #nextButton {
-      width: 100%; height: 100%;
-      border: 0; border-radius: 42px;
-      background: #f7d44a; color: #111;
+      width: 100%;
+      height: 100%;
+
+      border: 0;
+      border-radius: 42px;
+
+      background: #f7d44a;
+      color: #111;
+
       font-size: clamp(42px, 10vw, 110px);
-      font-weight: 900; letter-spacing: 0.02em;
+      font-weight: 900;
+      letter-spacing: 0.02em;
+
       touch-action: manipulation;
       -webkit-tap-highlight-color: transparent;
       user-select: none;
     }
-    #nextButton:active, #nextButton.busy { transform: scale(0.985); }
-    #nextButton.success { background: #8ee39a; }
-    #nextButton.error { background: #ff9d9d; }
+
+    #nextButton:active,
+    #nextButton.busy {
+      transform: scale(0.985);
+    }
+
+    #nextButton.success {
+      background: #8ee39a;
+    }
+
+    #nextButton.error {
+      background: #ff9d9d;
+    }
+
     #setup {
-      max-width: 700px; color: white; text-align: center;
-      background: #222; padding: 32px; border-radius: 24px;
+      max-width: 700px;
+      color: white;
+      text-align: center;
+
+      background: #222;
+      padding: 32px;
+      border-radius: 24px;
     }
-    #setup h1 { font-size: 42px; margin-top: 0; }
-    #setup p { font-size: 20px; line-height: 1.45; }
-    #loginButton, #retryButton {
-      font-size: 26px; font-weight: 800; padding: 20px 28px;
-      border: 0; border-radius: 18px; margin: 8px;
+
+    #setup h1 {
+      font-size: 42px;
+      margin-top: 0;
     }
+
+    #setup p {
+      font-size: 20px;
+      line-height: 1.45;
+    }
+
+    #loginButton {
+      font-size: 26px;
+      font-weight: 800;
+
+      padding: 20px 28px;
+      border: 0;
+      border-radius: 18px;
+      margin: 8px;
+    }
+
     #status {
-      position: fixed; left: 12px; bottom: 8px;
-      color: rgba(255,255,255,.65); font-size: 12px;
+      position: fixed;
+      left: 12px;
+      bottom: 8px;
+
+      color: rgba(255, 255, 255, 0.65);
+      font-size: 12px;
+
       pointer-events: none;
     }
   </style>
 </head>
+
 <body>
-<div id="app"></div>
-<div id="status"></div>
+  <div id="app"></div>
+  <div id="status"></div>
 
-<script>
-  // STEP 1: Replace the text below with the Client ID from your Spotify Developer app.
-  const CLIENT_ID = "3ff3af94ac7d4ff5a649ba5b1166c0bd";
+  <script>
+    const CLIENT_ID = "3ff3af94ac7d4ff5a649ba5b1166c0bd";
 
-  const SCOPES = "user-modify-playback-state";
-  const TOKEN_KEY = "brodie_spotify_tokens";
-  const VERIFIER_KEY = "brodie_spotify_code_verifier";
-  const REDIRECT_URI = window.location.origin + window.location.pathname;
-  const app = document.getElementById("app");
-  const statusEl = document.getElementById("status");
+    const SCOPES = "user-modify-playback-state";
+    const TOKEN_KEY = "brodie_spotify_tokens";
+    const VERIFIER_KEY = "brodie_spotify_code_verifier";
+    const REDIRECT_URI = window.location.origin + window.location.pathname;
 
-  function setStatus(text) { statusEl.textContent = text || ""; }
+    const app = document.getElementById("app");
+    const statusEl = document.getElementById("status");
 
-  function randomString(length) {
-    const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~";
-    const values = crypto.getRandomValues(new Uint8Array(length));
-    return Array.from(values, x => chars[x % chars.length]).join("");
-  }
-
-  async function sha256(text) {
-    return crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
-  }
-
-  function base64UrlEncode(buffer) {
-    return btoa(String.fromCharCode(...new Uint8Array(buffer)))
-      .replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
-  }
-
-  function loadTokens() {
-    try { return JSON.parse(localStorage.getItem(TOKEN_KEY) || "null"); }
-    catch { return null; }
-  }
-
-  function saveTokens(data) {
-    const existing = loadTokens() || {};
-    const tokens = {
-      access_token: data.access_token,
-      refresh_token: data.refresh_token || existing.refresh_token,
-      expires_at: Date.now() + (data.expires_in * 1000) - 60000
-    };
-    localStorage.setItem(TOKEN_KEY, JSON.stringify(tokens));
-    return tokens;
-  }
-
-  async function beginLogin() {
-    if (!CLIENT_ID || CLIENT_ID.includes("PASTE_YOUR")) {
-      alert("The Spotify Client ID has not been added yet.");
-      return;
+    function setStatus(text) {
+      statusEl.textContent = text || "";
     }
-    const verifier = randomString(64);
-    localStorage.setItem(VERIFIER_KEY, verifier);
-    const challenge = base64UrlEncode(await sha256(verifier));
 
-    const params = new URLSearchParams({
-      client_id: CLIENT_ID,
-      response_type: "code",
-      redirect_uri: REDIRECT_URI,
-      scope: SCOPES,
-      code_challenge_method: "S256",
-      code_challenge: challenge
-    });
-    window.location.href = "https://accounts.spotify.com/authorize?" + params.toString();
-  }
+    function randomString(length) {
+      const chars =
+        "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~";
 
-  async function exchangeCode(code) {
-    const verifier = localStorage.getItem(VERIFIER_KEY);
-    if (!verifier) throw new Error("Missing login verifier. Please connect again.");
+      const values = crypto.getRandomValues(new Uint8Array(length));
 
-    const body = new URLSearchParams({
-      client_id: CLIENT_ID,
-      grant_type: "authorization_code",
-      code,
-      redirect_uri: REDIRECT_URI,
-      code_verifier: verifier
-    });
-
-    const response = await fetch("https://accounts.spotify.com/api/token", {
-      method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body
-    });
-
-    if (!response.ok) throw new Error("Spotify login could not be completed.");
-    saveTokens(await response.json());
-    localStorage.removeItem(VERIFIER_KEY);
-    history.replaceState({}, document.title, REDIRECT_URI);
-  }
-
-  async function refreshAccessToken(tokens) {
-    if (!tokens?.refresh_token) throw new Error("Please reconnect Spotify.");
-
-    const body = new URLSearchParams({
-      client_id: CLIENT_ID,
-      grant_type: "refresh_token",
-      refresh_token: tokens.refresh_token
-    });
-
-    const response = await fetch("https://accounts.spotify.com/api/token", {
-      method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body
-    });
-
-    if (!response.ok) {
-      localStorage.removeItem(TOKEN_KEY);
-      throw new Error("Spotify connection expired. Please reconnect.");
+      return Array.from(
+        values,
+        value => chars[value % chars.length]
+      ).join("");
     }
-    return saveTokens(await response.json());
-  }
 
-  async function getAccessToken() {
-    let tokens = loadTokens();
-    if (!tokens) throw new Error("Please connect Spotify.");
-    if (Date.now() >= tokens.expires_at) tokens = await refreshAccessToken(tokens);
-    return tokens.access_token;
-  }
+    async function sha256(text) {
+      return crypto.subtle.digest(
+        "SHA-256",
+        new TextEncoder().encode(text)
+      );
+    }
 
-  function renderSetup(message = "Connect Brodie’s Spotify account once, then this screen becomes one large Next Song button.") {
-    app.innerHTML = `
-      <div class="screen">
-        <div id="setup">
-          <h1>🎵 Brodie’s Next Song</h1>
-          <p>${message}</p>
-          <button id="loginButton">Connect Spotify</button>
-        </div>
-      </div>`;
-    document.getElementById("loginButton").addEventListener("click", beginLogin);
-  }
+    function base64UrlEncode(buffer) {
+      return btoa(
+        String.fromCharCode(...new Uint8Array(buffer))
+      )
+        .replace(/\+/g, "-")
+        .replace(/\//g, "_")
+        .replace(/=+$/, "");
+    }
 
-  function renderMain() {
-    app.innerHTML = `
-      <div class="screen">
-        <button id="nextButton" aria-label="Next song">
-          🎵<br>NEXT SONG
-        </button>
-      </div>`;
-    const button = document.getElementById("nextButton");
-    let locked = false;
-
-    button.addEventListener("click", async () => {
-      if (locked) return;
-      locked = true;
-      button.className = "busy";
-      button.innerHTML = "PLEASE WAIT";
-
+    function loadTokens() {
       try {
-        const token = await getAccessToken();
-        const response = await fetch("https://api.spotify.com/v1/me/player/next", {
+        return JSON.parse(
+          localStorage.getItem(TOKEN_KEY) || "null"
+        );
+      } catch {
+        return null;
+      }
+    }
+
+    function saveTokens(data) {
+      const existing = loadTokens() || {};
+
+      const tokens = {
+        access_token: data.access_token,
+        refresh_token:
+          data.refresh_token || existing.refresh_token,
+        expires_at:
+          Date.now() + data.expires_in * 1000 - 60000
+      };
+
+      localStorage.setItem(
+        TOKEN_KEY,
+        JSON.stringify(tokens)
+      );
+
+      return tokens;
+    }
+
+    async function beginLogin() {
+      if (
+        !CLIENT_ID ||
+        CLIENT_ID.includes("PASTE_YOUR")
+      ) {
+        alert("The Spotify Client ID has not been added yet.");
+        return;
+      }
+
+      const verifier = randomString(64);
+
+      localStorage.setItem(
+        VERIFIER_KEY,
+        verifier
+      );
+
+      const challenge = base64UrlEncode(
+        await sha256(verifier)
+      );
+
+      const params = new URLSearchParams({
+        client_id: CLIENT_ID,
+        response_type: "code",
+        redirect_uri: REDIRECT_URI,
+        scope: SCOPES,
+        code_challenge_method: "S256",
+        code_challenge: challenge
+      });
+
+      window.location.href =
+        "https://accounts.spotify.com/authorize?" +
+        params.toString();
+    }
+
+    async function exchangeCode(code) {
+      const verifier =
+        localStorage.getItem(VERIFIER_KEY);
+
+      if (!verifier) {
+        throw new Error(
+          "Missing login verifier. Please connect again."
+        );
+      }
+
+      const body = new URLSearchParams({
+        client_id: CLIENT_ID,
+        grant_type: "authorization_code",
+        code: code,
+        redirect_uri: REDIRECT_URI,
+        code_verifier: verifier
+      });
+
+      const response = await fetch(
+        "https://accounts.spotify.com/api/token",
+        {
           method: "POST",
-          headers: { "Authorization": "Bearer " + token }
-        });
-
-        if (response.status === 204) {
-          button.className = "success";
-          button.innerHTML = "✓<br>CHANGED";
-          setStatus("");
-        } else if (response.status === 404) {
-          throw new Error("Start music in Spotify first.");
-        } else if (response.status === 401) {
-          localStorage.removeItem(TOKEN_KEY);
-          throw new Error("Spotify needs to be connected again.");
-        } else {
-          const detail = await response.text();
-          throw new Error("Could not change the song. " + (detail || ""));
+          headers: {
+            "Content-Type":
+              "application/x-www-form-urlencoded"
+          },
+          body: body
         }
-      } catch (error) {
-        button.className = "error";
-        button.innerHTML = "TRY AGAIN";
-        setStatus(error.message);
+      );
+
+      if (!response.ok) {
+        throw new Error(
+          "Spotify login could not be completed."
+        );
       }
 
-      setTimeout(() => {
-        button.className = "";
-        button.innerHTML = "🎵<br>NEXT SONG";
-        locked = false;
-      }, 500);
-    });
-  }
+      saveTokens(await response.json());
 
-  async function start() {
-    const params = new URLSearchParams(window.location.search);
-    const code = params.get("code");
-    const authError = params.get("error");
+      localStorage.removeItem(VERIFIER_KEY);
 
-    if (authError) {
-      renderSetup("Spotify permission was not granted. Please try again.");
-      return;
+      history.replaceState(
+        {},
+        document.title,
+        REDIRECT_URI
+      );
     }
 
-    if (code) {
-      try {
-        renderSetup("Finishing Spotify connection…");
-        await exchangeCode(code);
+    async function refreshAccessToken(tokens) {
+      if (!tokens?.refresh_token) {
+        throw new Error(
+          "Please reconnect Spotify."
+        );
+      }
+
+      const body = new URLSearchParams({
+        client_id: CLIENT_ID,
+        grant_type: "refresh_token",
+        refresh_token: tokens.refresh_token
+      });
+
+      const response = await fetch(
+        "https://accounts.spotify.com/api/token",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type":
+              "application/x-www-form-urlencoded"
+          },
+          body: body
+        }
+      );
+
+      if (!response.ok) {
+        localStorage.removeItem(TOKEN_KEY);
+
+        throw new Error(
+          "Spotify connection expired. Please reconnect."
+        );
+      }
+
+      return saveTokens(
+        await response.json()
+      );
+    }
+
+    async function getAccessToken() {
+      let tokens = loadTokens();
+
+      if (!tokens) {
+        throw new Error(
+          "Please connect Spotify."
+        );
+      }
+
+      if (Date.now() >= tokens.expires_at) {
+        tokens = await refreshAccessToken(tokens);
+      }
+
+      return tokens.access_token;
+    }
+
+    function renderSetup(
+      message =
+        "Connect Brodie’s Spotify account once, then this screen becomes one large Next Song button."
+    ) {
+      app.innerHTML = `
+        <div class="screen">
+          <div id="setup">
+            <h1>🎵 Brodie’s Next Song</h1>
+            <p>${message}</p>
+            <button id="loginButton">
+              Connect Spotify
+            </button>
+          </div>
+        </div>
+      `;
+
+      document
+        .getElementById("loginButton")
+        .addEventListener(
+          "click",
+          beginLogin
+        );
+    }
+
+    function resetButton(button) {
+      button.className = "";
+      button.innerHTML =
+        "🎵<br>NEXT SONG";
+    }
+
+    function renderMain() {
+      app.innerHTML = `
+        <div class="screen">
+          <button
+            id="nextButton"
+            aria-label="Next song"
+          >
+            🎵<br>NEXT SONG
+          </button>
+        </div>
+      `;
+
+      const button =
+        document.getElementById("nextButton");
+
+      let locked = false;
+
+      button.addEventListener(
+        "click",
+        async () => {
+          if (locked) {
+            return;
+          }
+
+          locked = true;
+
+          button.className = "busy";
+          button.innerHTML = "PLEASE WAIT";
+
+          try {
+            const token =
+              await getAccessToken();
+
+            const response = await fetch(
+              "https://api.spotify.com/v1/me/player/next",
+              {
+                method: "POST",
+                headers: {
+                  Authorization:
+                    "Bearer " + token
+                }
+              }
+            );
+
+            if (response.status === 204) {
+              button.className = "success";
+              button.innerHTML =
+                "✓<br>CHANGED";
+
+              setStatus("");
+
+              setTimeout(() => {
+                resetButton(button);
+                locked = false;
+              }, 800);
+
+              return;
+            }
+
+            if (response.status === 404) {
+              throw new Error(
+                "Start music in Spotify first."
+              );
+            }
+
+            if (response.status === 401) {
+              localStorage.removeItem(TOKEN_KEY);
+
+              throw new Error(
+                "Spotify needs to be connected again."
+              );
+            }
+
+            const detail =
+              await response.text();
+
+            throw new Error(
+              "Could not change the song. " +
+              (detail || "")
+            );
+
+          } catch (error) {
+            button.className = "error";
+            button.innerHTML = "TRY AGAIN";
+
+            setStatus(error.message);
+
+            setTimeout(() => {
+              resetButton(button);
+              locked = false;
+            }, 300);
+          }
+        }
+      );
+    }
+
+    async function start() {
+      const params =
+        new URLSearchParams(
+          window.location.search
+        );
+
+      const code = params.get("code");
+      const authError = params.get("error");
+
+      if (authError) {
+        renderSetup(
+          "Spotify permission was not granted. Please try again."
+        );
+
+        return;
+      }
+
+      if (code) {
+        try {
+          renderSetup(
+            "Finishing Spotify connection…"
+          );
+
+          await exchangeCode(code);
+
+          renderMain();
+
+        } catch (error) {
+          renderSetup(error.message);
+        }
+
+        return;
+      }
+
+      if (loadTokens()) {
         renderMain();
-      } catch (error) {
-        renderSetup(error.message);
+      } else {
+        renderSetup();
       }
-      return;
     }
 
-    if (loadTokens()) renderMain();
-    else renderSetup();
-  }
-
-  start();
-</script>
+    start();
+  </script>
 </body>
 </html>
